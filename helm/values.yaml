@@ -85,7 +85,7 @@ auth:
   # -- (string) OAuth provider
   # @raw
   #
-  # Supported values: `google`, `other`
+  # Supported values: `google`, `oidc`, `other`
   #
   # other: Use this option if you want to use a custom OAuth provider. UI does not have any built-in support for this option.
   #
@@ -116,6 +116,37 @@ auth:
   # - `clientSecret`: OAuth client secret
   #
   clientSecretName:
+
+  # -- (string) OIDC provider name
+  # @default -- not set
+  # @raw
+  #
+  # Example: `Entra ID`
+  oidcProviderName:
+
+  # -- (string) OIDC issuer URL
+  # @default -- not set
+  # @raw
+  #
+  # Example: `https://login.microsoftonline.com/common/v2.0`
+  #
+  oidcIssuer:
+
+  # -- (array) OAuth scopes
+  # @default -- not set
+  # @raw
+  #
+  # Example: `openid profile email`
+  #
+  oidcScopes:
+
+  # -- (string) OAuth redirect URI
+  # @default -- not set
+  # @raw
+  #
+  # Example: `http://localhost:3000/auth/callback`
+  #
+  oidcRedirectUri:
 
   # -- (int) OAuth redirect port
   # @default -- not set

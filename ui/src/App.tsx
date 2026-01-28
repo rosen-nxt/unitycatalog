@@ -35,7 +35,11 @@ import ModelVersionDetails from './pages/ModelVersionDetails';
 // As of [19/02/2025], this implementation should be updated once the following PR are merged.
 // SEE:
 // https://github.com/unitycatalog/unitycatalog/pull/809
-const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
+const authEnabled =
+  process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true' ||
+  process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true' ||
+  process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true' ||
+  process.env.REACT_APP_OIDC_AUTH_ENABLED === 'true';
 
 const router = createBrowserRouter([
   {
@@ -44,6 +48,10 @@ const router = createBrowserRouter([
       {
         path: '/',
         element: <CatalogsList />,
+      },
+      {
+        path: '/login/callback',
+        element: <Login />,
       },
       {
         path: '/data/:catalog',
@@ -107,7 +115,7 @@ function AppProvider() {
         onClick: () => logout().then(() => navigate('/')),
       },
     ],
-    [currentUser, logout, navigate],
+    [logout, navigate, currentUser?.displayName, currentUser?.emails],
   );
 
   return authEnabled && !currentUser ? (
