@@ -4,6 +4,7 @@ import GoogleAuthButton from '../components/login/GoogleAuthButton';
 import OktaAuthButton from '../components/login/OktaAuthButton';
 import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
+import OidcAuthButton from '../components/login/OidcAuthButton';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function LoginPage() {
@@ -15,8 +16,9 @@ export default function LoginPage() {
   const oktaEnabled = process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
   const keycloakEnabled =
     process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
+  const oidcEnabled = process.env.REACT_APP_OIDC_AUTH_ENABLED === 'true';
 
-  const handleGoogleSignIn = async (idToken: string) => {
+  const handleSignIn = async (idToken: string) => {
     await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
   };
 
@@ -62,7 +64,7 @@ export default function LoginPage() {
               Login to Unity Catalog
             </Typography.Title>
             {googleEnabled && (
-              <GoogleAuthButton onGoogleSignIn={handleGoogleSignIn} />
+              <GoogleAuthButton onGoogleSignIn={handleSignIn} />
             )}
             {oktaEnabled && (
               <OktaAuthButton
@@ -71,9 +73,13 @@ export default function LoginPage() {
               />
             )}
             {keycloakEnabled && <KeycloakAuthButton />}
-            {!googleEnabled && !oktaEnabled && !keycloakEnabled && (
-              <Typography>Auth providers have not been enabled</Typography>
-            )}
+            {oidcEnabled && <OidcAuthButton onSignIn={handleSignIn} />}
+            {!googleEnabled &&
+              !oktaEnabled &&
+              !keycloakEnabled &&
+              !oidcEnabled && (
+                <Typography>Auth providers have not been enabled</Typography>
+              )}
           </Flex>
         </div>
       </Flex>
