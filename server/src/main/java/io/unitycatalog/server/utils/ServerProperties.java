@@ -18,6 +18,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -445,5 +446,37 @@ public class ServerProperties {
           "MANAGED table is an experimental feature and is currently disabled. "
               + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
     }
+  }
+
+  /**
+   * Get the list of allowed token issuers.
+   *
+   * <p>When authorization is enabled, tokens will only be accepted from issuers in this list. This
+   * prevents attackers from using their own identity provider to forge tokens.
+   *
+   * @return List of allowed issuer URLs (exact match required)
+   */
+  public List<String> getAllowedIssuers() {
+    String issuers = getProperty("server.allowed-issuers");
+    if (issuers == null || issuers.isBlank()) {
+      return List.of();
+    }
+    return Arrays.stream(issuers.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+  }
+
+  /**
+   * Get the list of expected JWT audience values.
+   *
+   * <p>When authorization is enabled, tokens must contain one of these audience values. This
+   * ensures tokens are intended for this Unity Catalog instance.
+   *
+   * @return List of expected audience values
+   */
+  public List<String> getAudiences() {
+    String audiences = getProperty("server.audiences");
+    if (audiences == null || audiences.isBlank()) {
+      return List.of();
+    }
+    return Arrays.stream(audiences.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
   }
 }
