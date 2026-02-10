@@ -118,6 +118,37 @@ auth:
   #
   clientSecretName:
 
+  # -- (string) OIDC provider name
+  # @default -- not set
+  # @raw
+  #
+  # Example: `Entra ID`
+  oidcProviderName:
+
+  # -- (string) OIDC issuer URL
+  # @default -- not set
+  # @raw
+  #
+  # Example: `https://login.microsoftonline.com/common/v2.0`
+  #
+  oidcIssuer:
+
+  # -- (array) OAuth scopes
+  # @default -- not set
+  # @raw
+  #
+  # Example: `openid profile email`
+  #
+  oidcScopes:
+
+  # -- (string) OAuth redirect URI
+  # @default -- not set
+  # @raw
+  #
+  # Example: `http://localhost:3000/auth/callback`
+  #
+  oidcRedirectUri:
+
   # -- (string) Comma-separated list of allowed token issuers
   # @default -- https://accounts.google.com
   # @raw

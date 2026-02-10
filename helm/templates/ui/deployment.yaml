@@ -118,6 +118,21 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
+            - name: REACT_APP_OIDC_AUTH_ENABLED
+              value: "{{ eq .Values.auth.provider "oidc" }}"
+            - name: REACT_APP_OIDC_ISSUER
+              value: "{{ .Values.auth.oidcIssuer }}"
+            - name: REACT_APP_OIDC_REDIRECT_URI
+              value: "{{ .Values.auth.oidcRedirectUri }}"
+            - name: REACT_APP_OIDC_SCOPES
+              value: "{{ .Values.auth.oidcScopes }}"
+            - name: REACT_APP_OIDC_PROVIDER_NAME
+              value: "{{ .Values.auth.oidcProviderName }}"
+            - name: REACT_APP_OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.clientSecretName | quote }}
+                  key: clientId
             - name: REACT_APP_OKTA_AUTH_ENABLED
               value: "{{ eq .Values.auth.provider "okta" }}"
             - name: REACT_APP_OKTA_DOMAIN
