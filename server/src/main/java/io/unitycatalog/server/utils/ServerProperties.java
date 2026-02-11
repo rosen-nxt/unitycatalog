@@ -457,11 +457,7 @@ public class ServerProperties {
    * @return List of allowed issuer URLs (exact match required)
    */
   public List<String> getAllowedIssuers() {
-    String issuers = getProperty("server.allowed-issuers");
-    if (issuers == null || issuers.isBlank()) {
-      return List.of();
-    }
-    return Arrays.stream(issuers.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+    return getCommaSeparatedList("server.allowed-issuers");
   }
 
   /**
@@ -473,10 +469,20 @@ public class ServerProperties {
    * @return List of expected audience values
    */
   public List<String> getAudiences() {
-    String audiences = getProperty("server.audiences");
-    if (audiences == null || audiences.isBlank()) {
+    return getCommaSeparatedList("server.audiences");
+  }
+
+  /**
+   * Parse a comma-separated property value into a list of trimmed, non-empty strings.
+   *
+   * @param key the property key to look up
+   * @return List of trimmed values, or empty list if the property is null or blank
+   */
+  private List<String> getCommaSeparatedList(String key) {
+    String value = getProperty(key);
+    if (value == null || value.isBlank()) {
       return List.of();
     }
-    return Arrays.stream(audiences.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+    return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
   }
 }
