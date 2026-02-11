@@ -43,23 +43,6 @@ public class JwksOperations {
     JwkProvider jwkProvider = loadJwkProvider(issuer);
     Jwk jwk = jwkProvider.get(keyId);
 
-    String kty = jwk.getType();
-
-    // Validate that the key type matches the algorithm family
-    if (alg.startsWith("RS") && !"RSA".equalsIgnoreCase(kty)) {
-      throw new OAuthInvalidRequestException(
-          ErrorCode.ABORTED,
-          String.format(
-              "Invalid key type '%s' for RSA-based algorithm '%s' with issuer '%s'",
-              kty, alg, issuer));
-    } else if (alg.startsWith("ES") && !"EC".equalsIgnoreCase(kty)) {
-      throw new OAuthInvalidRequestException(
-          ErrorCode.ABORTED,
-          String.format(
-              "Invalid key type '%s' for ECDSA-based algorithm '%s' with issuer '%s'",
-              kty, alg, issuer));
-    }
-
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
     var builder = JWT.require(algorithm).withIssuer(issuer);
@@ -71,9 +54,9 @@ public class JwksOperations {
 
   @SneakyThrows
   private Algorithm algorithmForJwk(Jwk jwk, String alg) {
-    String kty = jwk.getType();
+    String keyType = jwk.getType();
 
-    return switch (kty) {
+    return switch (keyType) {
       case "RSA" -> switch (alg) {
         case "RS256" -> Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
         case "RS384" -> Algorithm.RSA384((RSAPublicKey) jwk.getPublicKey(), null);
@@ -89,7 +72,7 @@ public class JwksOperations {
                 String.format("Unsupported ECDSA algorithm: %s", alg));
       };
       default -> throw new OAuthInvalidClientException(ErrorCode.ABORTED,
-              String.format("Unsupported key type: %s", kty));
+              String.format("Unsupported key type: %s", keyType));
     };
   }
 
