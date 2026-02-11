@@ -45,7 +45,7 @@ public class JwksOperations {
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
-    var builder = JWT.require(algorithm).withIssuer(issuer);
+    Verification builder = JWT.require(algorithm).withIssuer(issuer);
     if (audiences != null && !audiences.isEmpty()) {
       builder.withAnyOfAudience(audiences.toArray(new String[0]));
     }
