@@ -81,7 +81,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     }
 
     // Internal tokens don't need audience validation
-    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, List.of());
+    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, List.of())
+        .join(); // Safe: INTERNAL issuer resolves immediately (no HTTP call)
     decodedJWT = jwtVerifier.verify(decodedJWT);
 
     String subject = decodedJWT.getSubject();

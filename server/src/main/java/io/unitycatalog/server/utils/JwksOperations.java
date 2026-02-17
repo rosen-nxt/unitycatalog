@@ -22,6 +22,7 @@ import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import lombok.SneakyThrows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,10 +39,15 @@ public class JwksOperations {
     this.securityContext = securityContext;
   }
 
-  @SneakyThrows
-  public JWTVerifier verifierForIssuerAndKey(
+  public CompletableFuture<JWTVerifier> verifierForIssuerAndKey(
       String issuer, String keyId, String alg, List<String> audiences) {
-    JwkProvider jwkProvider = loadJwkProvider(issuer);
+    return loadJwkProvider(issuer)
+        .thenApply(jwkProvider -> buildVerifier(jwkProvider, issuer, keyId, alg, audiences));
+  }
+
+  @SneakyThrows
+  private JWTVerifier buildVerifier(
+      JwkProvider jwkProvider, String issuer, String keyId, String alg, List<String> audiences) {
     Jwk jwk = jwkProvider.get(keyId);
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
@@ -78,59 +84,56 @@ public class JwksOperations {
   }
 
   @SneakyThrows
-  public JwkProvider loadJwkProvider(String issuer) {
-    LOGGER.debug("Loading JwkProvider for issuer '{}'", issuer);
+  public CompletableFuture<JwkProvider> loadJwkProvider(String issuer) {
+    LOGGER.debug("Loading JwkProvider async for issuer '{}'", issuer);
     if (issuer.equals(INTERNAL)) {
-      // Return our own "self-signed" provider, for easy mode.
-      // TODO: This should be configurable
       Path certsFile = securityContext.getCertsFile();
-      return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
-    } else {
-      // Get the JWKS from the OIDC well-known location described here
-      // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
-
-      if (!issuer.startsWith("https://") && !issuer.startsWith("http://")) {
-        issuer = "https://" + issuer;
-      }
-
-      String wellKnownConfigUrl = issuer;
-
-      if (!wellKnownConfigUrl.endsWith("/")) {
-        wellKnownConfigUrl += "/";
-      }
-
-      var path = wellKnownConfigUrl + ".well-known/openid-configuration";
-      LOGGER.debug("path: {}", path);
-
-      String response = webClient
-          .get(path)
-          .aggregate()
-          .join()
-          .contentUtf8();
-
-      // TODO: We should cache this. No need to fetch it each time.
-      Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
-
-      if (configMap == null || configMap.isEmpty()) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
-            "Could not get issuer configuration");
-      }
-
-      String configIssuer = (String) configMap.get("issuer");
-      String configJwksUri = (String) configMap.get("jwks_uri");
-
-      if (!configIssuer.equals(issuer)) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
-            "Issuer doesn't match configuration");
-      }
-
-      if (configJwksUri == null) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
-      }
-
-      // TODO: Or maybe just cache the provider for reuse.
-      return new JwkProviderBuilder(URI.create(configJwksUri).toURL()).cached(false).build();
+      return CompletableFuture.completedFuture(
+          new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build());
     }
+
+    if (!issuer.startsWith("https://") && !issuer.startsWith("http://")) {
+      issuer = "https://" + issuer;
+    }
+
+    String wellKnownConfigUrl = issuer;
+
+    if (!wellKnownConfigUrl.endsWith("/")) {
+      wellKnownConfigUrl += "/";
+    }
+
+    var path = wellKnownConfigUrl + ".well-known/openid-configuration";
+    LOGGER.debug("path: {}", path);
+
+    String finalIssuer = issuer;
+    return webClient
+        .get(path)
+        .aggregate()
+        .thenApply(response -> buildJwkProviderFromConfig(response.contentUtf8(), finalIssuer));
+  }
+
+  @SneakyThrows
+  private JwkProvider buildJwkProviderFromConfig(String response, String issuer) {
+    Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
+
+    if (configMap == null || configMap.isEmpty()) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
+          "Could not get issuer configuration");
+    }
+
+    String configIssuer = (String) configMap.get("issuer");
+    String configJwksUri = (String) configMap.get("jwks_uri");
+
+    if (!configIssuer.equals(issuer)) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
+          "Issuer doesn't match configuration");
+    }
+
+    if (configJwksUri == null) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
+    }
+
+    return new JwkProviderBuilder(URI.create(configJwksUri).toURL()).cached(false).build();
   }
 }
 

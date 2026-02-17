@@ -1,7 +1,6 @@
 package io.unitycatalog.server.service;
 
 import com.auth0.jwt.JWT;
-import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
@@ -163,34 +162,49 @@ public class AuthService {
 
     LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
-    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, audiences);
-    decodedJWT = jwtVerifier.verify(decodedJWT);
-    verifyPrincipal(decodedJWT);
+    // Use the async path to avoid blocking Armeria's event loop thread.
+    // A blocking .join() here would deadlock the event loop because the WebClient
+    // response may be scheduled on the same thread that is blocked waiting for it.
+    // See: https://github.com/line/armeria/issues/1693
+    return HttpResponse.of(
+        jwksOperations
+            .verifierForIssuerAndKey(issuer, keyId, alg, audiences)
+            .thenApply(
+                jwtVerifier -> {
+                  DecodedJWT verified = jwtVerifier.verify(form.getSubjectToken());
+                  verifyPrincipal(verified);
 
-    LOGGER.debug("Validated. Creating access token.");
+                  LOGGER.debug("Validated. Creating access token.");
 
-    String accessToken = securityContext.createAccessToken(decodedJWT);
+                  String accessToken = securityContext.createAccessToken(verified);
 
-    OAuthTokenExchangeInfo tokenExchangeInfo =
-        new OAuthTokenExchangeInfo()
-            .accessToken(accessToken)
-            .issuedTokenType(TokenType.ACCESS_TOKEN)
-            .tokenType(AccessTokenType.BEARER);
+                  OAuthTokenExchangeInfo tokenExchangeInfo =
+                      new OAuthTokenExchangeInfo()
+                          .accessToken(accessToken)
+                          .issuedTokenType(TokenType.ACCESS_TOKEN)
+                          .tokenType(AccessTokenType.BEARER);
 
-    // Set token as cookie if ext param is set to cookie
-    ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
-    ext.ifPresent(
-        e -> {
-          if (e.equals(TokenEndpointExtensionType.COOKIE)) {
-            // Set cookie timeout to 5 days by default if not present in server.properties
-            String cookieTimeout = this.serverProperties.get(Property.COOKIE_TIMEOUT);
-            Cookie cookie =
-                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
-            responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
-          }
-        });
+                  // Set token as cookie if ext param is set to cookie
+                  ResponseHeadersBuilder responseHeaders =
+                      ResponseHeaders.builder(HttpStatus.OK);
+                  ext.ifPresent(
+                      e -> {
+                        if (e.equals(TokenEndpointExtensionType.COOKIE)) {
+                          String cookieTimeout =
+                              this.serverProperties.get(Property.COOKIE_TIMEOUT);
+                          Cookie cookie =
+                              createCookie(
+                                  AuthDecorator.UC_TOKEN_KEY,
+                                  accessToken,
+                                  "/",
+                                  cookieTimeout);
+                          responseHeaders.add(
+                              HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+                        }
+                      });
 
-    return HttpResponse.ofJson(responseHeaders.build(), tokenExchangeInfo);
+                  return HttpResponse.ofJson(responseHeaders.build(), tokenExchangeInfo);
+                }));
   }
 
   @Post("/logout")
