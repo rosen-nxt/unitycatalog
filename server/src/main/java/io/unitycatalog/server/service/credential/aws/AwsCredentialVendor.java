@@ -101,6 +101,9 @@ public class AwsCredentialVendor {
   }
 
   private AwsCredentialGenerator createPerBucketCredentialGenerator(S3StorageConfig config) {
+    if (config.getStsEndpoint() != null) {
+      return new SeaweedFsOidcCredentialGenerator(config);
+    }
     // Dynamically load and initialize the generator if it's intentionally configured.
     if (config.getCredentialGenerator() != null) {
       try {
@@ -126,6 +129,16 @@ public class AwsCredentialVendor {
 
   public Credentials vendAwsCredentials(CredentialContext context) {
     AwsCredentialGenerator generator;
+    S3StorageConfig bucketConfig = perBucketS3Configs.get(context.getStorageBase());
+    if (bucketConfig != null && bucketConfig.getStsEndpoint() != null) {
+      // A configured SeaweedFS bucket must never fall through to AWS STS, including
+      // when the location has a storage credential. The generator verifies its role.
+      generator =
+          perBucketCredGenerators.computeIfAbsent(
+              context.getStorageBase(),
+              ignored -> createPerBucketCredentialGenerator(bucketConfig));
+      return generator.generate(context);
+    }
     if (context.getCredentialDAO().isPresent()) {
       // Use the master role STS generator
       generator = getAwsS3MasterRoleStsGenerator();
