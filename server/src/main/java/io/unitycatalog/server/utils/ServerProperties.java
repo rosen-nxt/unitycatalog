@@ -313,6 +313,13 @@ public class ServerProperties {
       String secretKey = getProperty("s3.secretKey." + i);
       String sessionToken = getProperty("s3.sessionToken." + i);
       String credentialGenerator = getProperty("s3.credentialGenerator." + i);
+      String stsEndpoint = getProperty("s3.stsEndpoint." + i);
+      String oidcScope = getProperty("s3.oidcScope." + i);
+      String sessionDurationSeconds = getProperty("s3.sessionDurationSeconds." + i);
+      if (stsEndpoint != null && (bucketPath == null || region == null || awsRoleArn == null)) {
+        throw new IllegalArgumentException(
+            "SeaweedFS STS requires bucketPath, region and awsRoleArn for entry " + i);
+      }
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
@@ -326,6 +333,10 @@ public class ServerProperties {
               .secretKey(secretKey)
               .sessionToken(sessionToken)
               .credentialGenerator(credentialGenerator)
+              .stsEndpoint(stsEndpoint)
+              .oidcScope(oidcScope)
+              .sessionDurationSeconds(
+                  sessionDurationSeconds == null ? 900 : Integer.parseInt(sessionDurationSeconds))
               .build();
       s3BucketConfigMap.put(NormalizedURL.from(bucketPath), s3StorageConfig);
       i++;
