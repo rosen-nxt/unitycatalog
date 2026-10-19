@@ -152,7 +152,7 @@ This convention allows us to apply governance to these assets (e.g., models, tab
 similar fashion. You can also see the training run(s) and model(s) in the MLflow UI at
 [http://127.0.0.1:5000/](http://127.0.0.1:5000/).  
 
-![MLflow Unity Catalog Model View 2.0](../assets/images/mlflow-unitycatalog-model-view-2.0.gif)
+[MLflow Unity Catalog Model View 2.0 screenshot](https://github.com/unitycatalog/unitycatalog/blob/v0.7.0/docs/assets/images/mlflow-unitycatalog-model-view-2.0.gif)
 
 ---
 
