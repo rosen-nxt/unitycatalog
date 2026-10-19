@@ -1,6 +1,11 @@
 package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -13,12 +18,27 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
+import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.OAuthTokenExchangeForm;
+import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.OAuthInvalidRequestException;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.WildcardAllowlist;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,6 +49,54 @@ public class AuthServiceAllowlistTest {
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  @Test
+  void rejectsExchangeWhenAuthorizationDisabled() {
+    AuthService service =
+        new AuthService(
+            mock(SecurityContext.class), mock(ServerProperties.class), mock(Repositories.class));
+    var form =
+        new OAuthTokenExchangeForm()
+            .grantType(GrantType.TOKEN_EXCHANGE)
+            .requestedTokenType(TokenType.ACCESS_TOKEN)
+            .subjectTokenType(TokenType.ID_TOKEN)
+            .subjectToken("must-not-be-decoded");
+
+    assertThatThrownBy(() -> service.grantToken(Optional.empty(), form))
+        .isInstanceOfSatisfying(
+            OAuthInvalidRequestException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+        .hasMessage("Authorization is disabled");
+  }
+
+  @Test
+  void doesNotLogSubjectTokenAtDebugLevel() {
+    Logger logger = (Logger) LogManager.getLogger(AuthService.class);
+    Level previousLevel = logger.getLevel();
+    List<String> messages = new ArrayList<>();
+    Appender appender = mock(Appender.class);
+    when(appender.getName()).thenReturn("token-log-check");
+    when(appender.isStarted()).thenReturn(true);
+    doAnswer(
+            invocation -> {
+              messages.add(
+                  ((LogEvent) invocation.getArgument(0)).getMessage().getFormattedMessage());
+              return null;
+            })
+        .when(appender)
+        .append(any(LogEvent.class));
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+    try {
+      logger.debug("Token logging probe");
+      rejectsExchangeWhenAuthorizationDisabled();
+      assertThat(messages).contains("Token logging probe");
+      assertThat(messages).noneMatch(message -> message.contains("must-not-be-decoded"));
+    } finally {
+      logger.removeAppender(appender);
+      logger.setLevel(previousLevel);
+    }
+  }
 
   abstract static class TokenExchangeTestBase extends BaseAuthCRUDTest {
 

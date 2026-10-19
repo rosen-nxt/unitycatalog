@@ -119,8 +119,6 @@ public class AuthService implements RegisteredService {
   public HttpResponse grantToken(
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
-    LOGGER.debug("Got token: {}", form);
-
     if (GrantType.TOKEN_EXCHANGE != form.getGrantType()) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Unsupported grant type: " + form.getGrantType());
@@ -152,9 +150,9 @@ public class AuthService implements RegisteredService {
     try {
       decodedJWT = JWT.decode(form.getSubjectToken());
     } catch (JWTDecodeException e) {
-      LOGGER.error("Token rejected: malformed token", e);
-      throw new OAuthInvalidRequestException(
-          ErrorCode.UNAUTHENTICATED, "Invalid token: " + e.getMessage(), e);
+      // JWT exception messages can contain token material; keep it out of logs and responses.
+      LOGGER.warn("Token rejected: malformed token");
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid token");
     }
 
     String issuer = decodedJWT.getIssuer();
@@ -174,9 +172,9 @@ public class AuthService implements RegisteredService {
       JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
       decodedJWT = jwtVerifier.verify(decodedJWT);
     } catch (JWTVerificationException e) {
-      LOGGER.error("Token rejected: verification failed", e);
+      LOGGER.warn("Token rejected: verification failed");
       throw new OAuthInvalidRequestException(
-          ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
+          ErrorCode.UNAUTHENTICATED, "Token verification failed");
     }
 
     validateAudience(decodedJWT);
