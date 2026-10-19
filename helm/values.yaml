@@ -86,11 +86,23 @@ auth:
   # @default -- google
   # @raw
   #
-  # Supported values: `google`, `other`
+  # Supported values: `google`, `okta`, `keycloak`, `oidc`, `other`
   #
   # other: Use this option if you want to use a custom OAuth provider. UI does not have any built-in support for this option.
   #
   provider: google
+
+  # -- (string) Generic OIDC issuer (tenant-specific for Entra ID)
+  oidcIssuer: ""
+
+  # -- (string) Same-origin SPA callback; empty uses /login/callback on the UI origin
+  oidcRedirectUri: ""
+
+  # -- (string) OIDC scopes; must include openid
+  oidcScopes: "openid profile email"
+
+  # -- (string) Provider name shown on the login button
+  oidcProviderName: "SSO"
 
   # -- (string) OAuth authorization URL
   # @default -- https://accounts.google.com/o/oauth2/auth

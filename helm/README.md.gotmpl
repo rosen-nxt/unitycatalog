@@ -38,8 +38,43 @@ The following table lists the configurable parameters of the Unity Catalog chart
 
 > **Note**
 >
-> Auth integration in UI works only with Google OAuth provider and
-> it does not work with UC versions 0.2.1 and below.
+> This fork supports generic OIDC code/PKCE login alongside the existing provider paths.
+> Keycloak's dedicated button remains a placeholder; use `provider: oidc` for a generic flow.
+
+### Generic OIDC / Entra ID
+
+```yaml
+auth:
+  enabled: true
+  provider: oidc
+  clientSecretName: oidc-client
+  oidcIssuer: https://login.microsoftonline.com/<tenant-id>/v2.0
+  oidcRedirectUri: https://catalog.example.com/login/callback
+  oidcScopes: openid profile email
+  oidcProviderName: Microsoft
+  allowedIssuers: https://login.microsoftonline.com/<tenant-id>/v2.0
+  audiences: <spa-client-id>
+```
+
+Register the exact callback as an SPA redirect and provision an enabled UC user matching
+the ID token's email (or supported sub lookup). The UI receives `REACT_APP_OIDC_*` values;
+`REACT_APP_OIDC_CLIENT_ID` references the `clientId` key in `auth.clientSecretName`.
+No client secret is sent to the browser. The existing server init-container interface also
+references a `clientSecret` key: for a browser-only public-client setup that key can be an
+empty string. Confidential CLI OAuth settings are separate from the browser PKCE flow.
+
+The UI image starts CRA using `bun run start` with Node still installed. Helm adjusts
+`package.json`'s API proxy before starting CRA; disabling the proxy removes the property.
+`REACT_APP_*` values are consumed at startup (or at build time for static assets), not
+injected into an already-built static bundle. Route `/login/callback` to the UI and the
+`/api` prefix to the server on the same origin. UC cookies retain their server security
+flags; use HTTPS for non-localhost deployments. Logout clears UC access and local OIDC
+state, not the provider-wide session; a new login explicitly starts an interactive flow.
+
+Use `just chart-test` for lint and render regression checks, `just ui-image` to build with
+Docker, and `docs/server/oidc-auth.md` for local setup.
+Pin paired server/UI images and chart source to the reviewed fork commit before release;
+the inherited chart `main` image defaults are not immutable release pins.
 
 {{ template "chart.valuesSectionHtml" . }}
 

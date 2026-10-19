@@ -27,17 +27,20 @@ import SchemaDetails from './pages/SchemaDetails';
 import { NotificationProvider } from './utils/NotificationContext';
 import ModelDetails from './pages/ModelDetails';
 import Login from './pages/Login';
+import OidcCallback from './pages/OidcCallback';
 import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
 import ModelVersionDetails from './pages/ModelVersionDetails';
 
-// TODO:
-// As of [19/02/2025], this implementation should be updated once the following PR are merged.
-// SEE:
-// https://github.com/unitycatalog/unitycatalog/pull/809
-const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
+const authEnabled = [
+  process.env.REACT_APP_GOOGLE_AUTH_ENABLED,
+  process.env.REACT_APP_OKTA_AUTH_ENABLED,
+  process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED,
+  process.env.REACT_APP_OIDC_AUTH_ENABLED,
+].includes('true');
 
 const router = createBrowserRouter([
+  { path: '/login/callback', element: <OidcCallback /> },
   {
     element: <AppProvider />,
     children: [
@@ -104,7 +107,10 @@ function AppProvider() {
       {
         key: 'logout',
         label: 'Log out',
-        onClick: () => logout().then(() => navigate('/')),
+        onClick: () =>
+          logout()
+            .then(() => navigate('/'))
+            .catch(() => {}),
       },
     ],
     [currentUser, logout, navigate],

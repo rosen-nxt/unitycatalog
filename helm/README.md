@@ -37,8 +37,43 @@ The following table lists the configurable parameters of the Unity Catalog chart
 
 > **Note**
 >
-> Auth integration in UI works only with Google OAuth provider and
-> it does not work with UC versions 0.2.1 and below.
+> This fork supports generic OIDC code/PKCE login alongside the existing provider paths.
+> Keycloak's dedicated button remains a placeholder; use `provider: oidc` for a generic flow.
+
+### Generic OIDC / Entra ID
+
+```yaml
+auth:
+  enabled: true
+  provider: oidc
+  clientSecretName: oidc-client
+  oidcIssuer: https://login.microsoftonline.com/<tenant-id>/v2.0
+  oidcRedirectUri: https://catalog.example.com/login/callback
+  oidcScopes: openid profile email
+  oidcProviderName: Microsoft
+  allowedIssuers: https://login.microsoftonline.com/<tenant-id>/v2.0
+  audiences: <spa-client-id>
+```
+
+Register the exact callback as an SPA redirect and provision an enabled UC user matching
+the ID token's email (or supported sub lookup). The UI receives `REACT_APP_OIDC_*` values;
+`REACT_APP_OIDC_CLIENT_ID` references the `clientId` key in `auth.clientSecretName`.
+No client secret is sent to the browser. The existing server init-container interface also
+references a `clientSecret` key: for a browser-only public-client setup that key can be an
+empty string. Confidential CLI OAuth settings are separate from the browser PKCE flow.
+
+The UI image starts CRA using `bun run start` with Node still installed. Helm adjusts
+`package.json`'s API proxy before starting CRA; disabling the proxy removes the property.
+`REACT_APP_*` values are consumed at startup (or at build time for static assets), not
+injected into an already-built static bundle. Route `/login/callback` to the UI and the
+`/api` prefix to the server on the same origin. UC cookies retain their server security
+flags; use HTTPS for non-localhost deployments. Logout clears UC access and local OIDC
+state, not the provider-wide session; a new login explicitly starts an interactive flow.
+
+Use `just chart-test` for lint and render regression checks, `just ui-image` to build with
+Docker, and `docs/server/oidc-auth.md` for local setup.
+Pin paired server/UI images and chart source to the reviewed fork commit before release;
+the inherited chart `main` image defaults are not immutable release pins.
 
 ## Values
 
@@ -51,6 +86,18 @@ The following table lists the configurable parameters of the Unity Catalog chart
 	</thead>
 	<tbody>
 		<tr>
+			<td>auth.accessTokenTimeout</td>
+			<td>string</td>
+			<td><pre lang="">
+PT24H
+</pre>
+</td>
+			<td>UC access token lifetime for token exchange
+
+Example: `PT24H` (24 hours), `P7D` (7 days)
+</td>
+		</tr>
+		<tr>
 			<td>auth.allowedIssuers</td>
 			<td>string</td>
 			<td><pre lang="">
@@ -60,6 +107,9 @@ https://accounts.google.com
 			<td>Comma-separated list of allowed token issuers
 
 When authorization is enabled, tokens will only be accepted from issuers in this list.
+Supports exact match or wildcard patterns with * (single DNS label per wildcard).
+Cannot be "*" alone. Wildcard issuers are evaluated before signature verification;
+see docs/server/auth.md.
 
 Example for Google: `https://accounts.google.com`
 Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
@@ -74,9 +124,9 @@ not set
 </td>
 			<td>Comma-separated list of expected JWT audience values
 
-When authorization is enabled, tokens must contain one of these audience values.
-This ensures tokens are intended for this Unity Catalog instance.
-Typically your application's client ID or API identifier.
+When authorization is enabled, tokens must contain an aud value matching one of these entries.
+Supports exact match or wildcard patterns with * (same rules as allowedIssuers).
+Use "*" alone to disable audience validation (issuer and user checks still apply).
 </td>
 		</tr>
 		<tr>
@@ -118,18 +168,6 @@ Example: `P5D` (5 days)
 </td>
 		</tr>
 		<tr>
-			<td>auth.accessTokenTimeout</td>
-			<td>string</td>
-			<td><pre lang="json">
-"PT24H"
-</pre>
-</td>
-			<td>UC access token lifetime for token exchange
-
-Example: `PT24H` (24 hours), `P7D` (7 days)
-</td>
-		</tr>
-		<tr>
 			<td>auth.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -137,6 +175,42 @@ false
 </pre>
 </td>
 			<td>Enable OAuth authentication</td>
+		</tr>
+		<tr>
+			<td>auth.oidcIssuer</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Generic OIDC issuer (tenant-specific for Entra ID)</td>
+		</tr>
+		<tr>
+			<td>auth.oidcProviderName</td>
+			<td>string</td>
+			<td><pre lang="json">
+"SSO"
+</pre>
+</td>
+			<td>Provider name shown on the login button</td>
+		</tr>
+		<tr>
+			<td>auth.oidcRedirectUri</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Same-origin SPA callback; empty uses /login/callback on the UI origin</td>
+		</tr>
+		<tr>
+			<td>auth.oidcScopes</td>
+			<td>string</td>
+			<td><pre lang="json">
+"openid profile email"
+</pre>
+</td>
+			<td>OIDC scopes; must include openid</td>
 		</tr>
 		<tr>
 			<td>auth.provider</td>
@@ -147,7 +221,7 @@ google
 </td>
 			<td>OAuth provider
 
-Supported values: `google`, `other`
+Supported values: `google`, `okta`, `keycloak`, `oidc`, `other`
 
 other: Use this option if you want to use a custom OAuth provider. UI does not have any built-in support for this option.
 </td>
