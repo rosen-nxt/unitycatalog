@@ -38,12 +38,28 @@ public class JwksOperations {
 
   @SneakyThrows
   public JWTVerifier verifierForIssuerAndKey(String issuer, String keyId, String alg) {
+    if (issuer.equals(INTERNAL)) {
+      return internalTokenVerifier(keyId, alg);
+    }
+
     JwkProvider jwkProvider = loadJwkProvider(issuer);
     Jwk jwk = jwkProvider.get(keyId);
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
     return JWT.require(algorithm).withIssuer(issuer).build();
+  }
+
+  private JWTVerifier internalTokenVerifier(String keyId, String alg) {
+    if (!securityContext.getKeyId().equals(keyId)) {
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Unknown internal key id");
+    }
+    Algorithm algorithm = securityContext.getAlgorithm();
+    if (!algorithm.getName().equals(alg)) {
+      throw new OAuthInvalidClientException(
+          ErrorCode.ABORTED, String.format("Unsupported internal algorithm: %s", alg));
+    }
+    return JWT.require(algorithm).withIssuer(INTERNAL).build();
   }
 
   @SneakyThrows

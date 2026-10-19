@@ -1,0 +1,7 @@
+# Copy to server.properties.local for a local Compose OIDC test. This file is
+# supplied as container environment variables and overrides server.properties.
+# All values below are public identity-provider configuration; do not add a
+# client secret because browser authorization-code flow uses PKCE.
+server.authorization=enable
+server.allowed-issuers=https://login.microsoftonline.com/<tenant-id>/v2.0
+server.audiences=<spa-client-id>

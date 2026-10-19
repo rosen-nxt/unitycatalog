@@ -24,6 +24,7 @@ python_engine.log
 
 # Signing keys and access tokens
 etc/conf/certs.json
+etc/conf/server.properties.local
 etc/conf/*.txt
 etc/conf/*.der
 connectors/spark/etc/conf/certs.json

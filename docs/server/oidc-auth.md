@@ -129,6 +129,20 @@ just ui-install
 BROWSER=none PORT=3000 just ui-start
 ```
 
+When running the local server and UI through Compose, use `just up` instead.
+Compose passes `ui/.env.local` to the UI container when it starts, so the same
+OIDC settings are available without copying local configuration into the image.
+The server also needs matching token validation settings. Copy
+`etc/conf/server.properties.local.example` to the ignored
+`etc/conf/server.properties.local`, replace the tenant and SPA client-ID
+placeholders, then run `just up`. Those dotted environment-variable names
+override the tracked `server.properties` defaults only inside the Compose
+container.
+
+The server must also contain an enabled local user whose email (or, if email is
+absent, subject) matches the ID token. Provision that user before sign-in as
+described in [Provision a non-admin test user](#provision-a-non-admin-test-user).
+
 Open `http://localhost:3000` and choose **Continue with Microsoft**. The host UI's
 existing proxy targets `http://localhost:8080`, so UI and API share one browser
 origin. Leave CRA's `HOST` unset when using the development proxy: its allowed-host

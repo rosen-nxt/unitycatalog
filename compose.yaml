@@ -3,20 +3,30 @@ name: unitycatalog
 services:
 
   server:
-    image: unitycatalog/unitycatalog:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: unitycatalog:local
+    # These dotted variable names override server.properties. Keep local identity
+    # configuration outside both Git and the image.
+    env_file:
+      - path: ./etc/conf/server.properties.local
+        required: false
     ports:
       - "8080:8080"
     volumes:
-      - type: bind
-        source: ./etc/conf
-        target: /opt/unitycatalog/etc/conf
       - type: volume
         source: unitycatalog_data
-        target: /opt/unitycatalog/etc/data
+        target: /home/unitycatalog/etc/data
   ui:
     build:
       context: ui/
       dockerfile: Dockerfile
+    # Public browser configuration is read by CRA when the container starts.
+    # Keep it out of the image; users may omit the local file for non-OIDC use.
+    env_file:
+      - path: ./ui/.env.local
+        required: false
     ports:
       - "3000:3000"
     depends_on:
