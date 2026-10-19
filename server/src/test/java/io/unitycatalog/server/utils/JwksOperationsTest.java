@@ -187,6 +187,40 @@ class JwksOperationsTest {
         .hasMessage("Unsupported RSA algorithm: HS256");
   }
 
+  @Test
+  void verifiesInternalTokensWithTheConfiguredSigningKey() throws Exception {
+    SecurityContext securityContext = mock(SecurityContext.class);
+    Algorithm signing =
+        Algorithm.RSA512((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+    when(securityContext.getKeyId()).thenReturn("internal-key");
+    when(securityContext.getAlgorithm()).thenReturn(signing);
+    JwksOperations operations = new JwksOperations(securityContext);
+
+    String valid =
+        JWT.create()
+            .withIssuer(SecurityContext.Issuers.INTERNAL)
+            .withKeyId("internal-key")
+            .withSubject("human@example.com")
+            .sign(signing);
+
+    var verifier =
+        operations.verifierForIssuerAndKey(
+            SecurityContext.Issuers.INTERNAL, "internal-key", "RS512");
+    assertThat(verifier.verify(valid).getSubject()).isEqualTo("human@example.com");
+    assertThatThrownBy(
+            () ->
+                operations.verifierForIssuerAndKey(
+                    SecurityContext.Issuers.INTERNAL, "unknown-key", "RS512"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessage("Unknown internal key id");
+    assertThatThrownBy(
+            () ->
+                operations.verifierForIssuerAndKey(
+                    SecurityContext.Issuers.INTERNAL, "internal-key", "RS256"))
+        .isInstanceOf(OAuthInvalidClientException.class)
+        .hasMessage("Unsupported internal algorithm: RS256");
+  }
+
   private void respondWith(int status, String contentType, String body) {
     discoveryStatus = status;
     discoveryContentType = contentType;

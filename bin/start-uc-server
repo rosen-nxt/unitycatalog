@@ -6,6 +6,16 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 TARBALL_JAR_DIR="$ROOT_DIR/jars"
 SERVER_CLASS_FILE="$ROOT_DIR/server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
 
+# Prefer the configured JDK over Java on PATH so the build and server use the same runtime.
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+  JAVA_BIN="$JAVA_HOME/bin/java"
+elif JAVA_BIN="$(command -v java 2>/dev/null)"; then
+  :
+else
+  echo "Java was not found. Set JAVA_HOME to a JDK 17 installation or add java to PATH." >&2
+  exit 1
+fi
+
 # This function generates the unity catalog jars using sbt
 generate_jar() {
   local GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
@@ -15,9 +25,9 @@ generate_jar() {
 
 # This function starts the unity catalog server
 run_uc_server_java_command() {
-  SERVER_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
+  SERVER_CLASSPATH="$(cat "$1")"
   shift
-  $SERVER_JAVA_COMMAND "$@" || exit
+  "$JAVA_BIN" -cp "$SERVER_CLASSPATH" io.unitycatalog.server.UnityCatalogServer "$@" || exit
 }
 
 # This function runs the server using the source code

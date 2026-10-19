@@ -30,12 +30,32 @@ chart-test:
 ui-start:
     cd ui && bun run start
 
+# Start the UI from a fresh checkout, using the dependency versions in bun.lock.
+start-ui: ui-install
+    cd ui && bun run start
+
 server-package:
     build/sbt server/package
 
 # Run with isolated etc/conf and etc/db underneath an absolute directory.
 server-start run_dir=".":
-    cd "{{run_dir}}" && "{{justfile_directory()}}/bin/start-uc-server"
+    cd "{{ run_dir }}" && "{{ justfile_directory() }}/bin/start-uc-server"
+
+# Build the server image from this checkout and start its Compose service.
+start-server:
+    docker compose up --build --detach server
+
+# Stop the Compose server service while preserving its data volume.
+stop-server:
+    docker compose stop server
+
+# Build the local server image and start the server and UI Compose services.
+up:
+    docker compose up --build --detach
+
+# Stop and remove the server and UI containers while preserving catalog data.
+down:
+    docker compose down --remove-orphans
 
 server-test:
     build/sbt "server/test"

@@ -13,3 +13,4 @@ etc/conf/public_key.*
 etc/conf/key_id.txt
 etc/conf/certs.json
 etc/conf/token.txt
+etc/conf/server.properties.local
