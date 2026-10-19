@@ -7,69 +7,76 @@ import {
 } from '../hooks/user';
 import { GrantType, TokenType } from '../types/api/control.gen';
 import { useNotification } from '../utils/NotificationContext';
+import { clearOidcSession } from '../components/login/oidc';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AuthContextProps {
-  accessToken: any;
-  loginWithToken: any;
-  logout: any;
-  currentUser: UserInterface | null;
+  loginWithToken: (idToken: string) => Promise<void>;
+  logout: () => Promise<void>;
+  currentUser: UserInterface | null | undefined;
 }
 
 const AuthContext = React.createContext<AuthContextProps>({
-  accessToken: null,
-  loginWithToken: null,
-  logout: null,
+  loginWithToken: async () => {
+    throw new Error('Authentication is disabled');
+  },
+  logout: async () => {
+    throw new Error('Authentication is disabled');
+  },
   currentUser: null,
 });
 AuthContext.displayName = 'AuthContext';
 
 function AuthProvider(props: any) {
   const { data: currentUser, refetch } = useGetCurrentUser();
-  const loginWithTokenMutation = useLoginWithToken();
-  const logoutUser = useLogoutCurrentUser();
+  const { mutateAsync: exchangeToken, reset: resetExchange } =
+    useLoginWithToken();
+  const { mutateAsync: logoutUser } = useLogoutCurrentUser();
+  const queryClient = useQueryClient();
   const { setNotification } = useNotification();
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
-      return loginWithTokenMutation.mutate(
-        {
+      try {
+        await exchangeToken({
           grant_type: GrantType.TOKEN_EXCHANGE,
           requested_token_type: TokenType.ACCESS_TOKEN,
           subject_token_type: TokenType.ID_TOKEN,
           subject_token: idToken,
-        },
-        {
-          onSuccess: () => {
-            refetch();
-          },
-          onError: () => {
-            setNotification(
-              'Login failed. Please contact your system administrator.',
-              'error',
-            );
-          },
-        },
-      );
+        });
+        const result = await refetch({ throwOnError: true });
+        if (!result.data) throw new Error('No authenticated user');
+      } catch {
+        setNotification(
+          'Login failed. Please contact your system administrator.',
+          'error',
+        );
+        throw new Error('Login failed');
+      } finally {
+        resetExchange();
+      }
     },
-    [loginWithTokenMutation, setNotification, refetch],
+    [exchangeToken, resetExchange, setNotification, refetch],
   );
 
   const logout = useCallback(async () => {
-    return logoutUser.mutate(
-      {},
-      {
-        onSuccess: () => {
-          refetch();
-        },
-        onError: () => {
-          setNotification(
-            'Logout failed. Please contact your system administrator.',
-            'error',
-          );
-        },
-      },
-    );
-  }, [refetch, logoutUser, setNotification]);
+    try {
+      await logoutUser({});
+      await clearOidcSession();
+      await queryClient.cancelQueries();
+      queryClient.setQueryData(['getUser'], null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== 'getUser',
+      });
+      await refetch({ throwOnError: true });
+    } catch {
+      setNotification(
+        'Logout failed. Please contact your system administrator.',
+        'error',
+      );
+      throw new Error('Logout failed');
+    }
+  }, [refetch, logoutUser, queryClient, setNotification]);
 
   const value = useMemo(
     () => ({

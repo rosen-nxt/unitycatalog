@@ -1,23 +1,46 @@
-import { Flex, Layout, Typography } from 'antd';
-import React from 'react';
+import { Alert, Flex, Layout, Typography } from 'antd';
+import React, { useState } from 'react';
 import GoogleAuthButton from '../components/login/GoogleAuthButton';
 import OktaAuthButton from '../components/login/OktaAuthButton';
 import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
 import { useNavigate, useLocation } from 'react-router-dom';
+import OidcAuthButton from '../components/login/OidcAuthButton';
+import { oidcEnabled } from '../components/login/oidc';
+
+function safeDestination(requested: unknown): string {
+  if (typeof requested !== 'string' || !requested.startsWith('/')) return '/';
+  try {
+    const url = new URL(requested, window.location.origin);
+    return url.origin === window.location.origin &&
+      url.pathname !== '/login/callback'
+      ? url.pathname + url.search + url.hash
+      : '/';
+  } catch {
+    return '/';
+  }
+}
 
 export default function LoginPage() {
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || '/';
+  const from = safeDestination(location.state?.from);
+  const [failed, setFailed] = useState(false);
   const googleEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
   const oktaEnabled = process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
   const keycloakEnabled =
     process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
 
-  const handleGoogleSignIn = async (idToken: string) => {
-    await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
+  const handleSignIn = async (idToken: string) => {
+    setFailed(false);
+    try {
+      if (!idToken) throw new Error('Missing ID token');
+      await loginWithToken(idToken);
+      navigate(from, { replace: true });
+    } catch {
+      setFailed(true);
+    }
   };
 
   return (
@@ -45,7 +68,7 @@ export default function LoginPage() {
         </div>
         <div
           style={{
-            height: 276,
+            minHeight: 276,
             width: 400,
             backgroundColor: '#F6F7F9',
             borderRadius: '16px',
@@ -61,19 +84,28 @@ export default function LoginPage() {
             <Typography.Title level={4}>
               Login to Unity Catalog
             </Typography.Title>
+            {failed && (
+              <Alert type="error" message="Sign-in failed. Please try again." />
+            )}
+            <OidcAuthButton />
             {googleEnabled && (
-              <GoogleAuthButton onGoogleSignIn={handleGoogleSignIn} />
+              <GoogleAuthButton onGoogleSignIn={handleSignIn} />
             )}
             {oktaEnabled && (
               <OktaAuthButton
-                onSuccess={(tokens: any) => console.log('tokens', tokens)}
-                onError={(error: Error) => console.log('error', error)}
+                onSuccess={(tokens: any) =>
+                  handleSignIn(tokens?.idToken?.idToken)
+                }
+                onError={() => setFailed(true)}
               />
             )}
             {keycloakEnabled && <KeycloakAuthButton />}
-            {!googleEnabled && !oktaEnabled && !keycloakEnabled && (
-              <Typography>Auth providers have not been enabled</Typography>
-            )}
+            {!googleEnabled &&
+              !oktaEnabled &&
+              !keycloakEnabled &&
+              !oidcEnabled && (
+                <Typography>Auth providers have not been enabled</Typography>
+              )}
           </Flex>
         </div>
       </Flex>
