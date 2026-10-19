@@ -30,8 +30,21 @@ chart-test:
 ui-start:
     cd ui && bun run start
 
-server-start:
-    bin/start-uc-server
+server-package:
+    build/sbt server/package
+
+# Run with isolated etc/conf and etc/db underneath an absolute directory.
+server-start run_dir=".":
+    cd "{{run_dir}}" && "{{justfile_directory()}}/bin/start-uc-server"
+
+server-test:
+    build/sbt "server/test"
+
+server-image:
+    docker build -t unitycatalog:local .
+
+server-image-smoke:
+    bash dev/smoke-server-image.sh
 
 ui-image:
     docker build -f ui/Dockerfile -t unitycatalog-ui:local ui
