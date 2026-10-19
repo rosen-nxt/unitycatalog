@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -77,6 +80,65 @@ class TokenExchangeSubjectTokenHandlerTest {
         .isInstanceOf(OAuthInvalidRequestException.class)
         .hasMessageContaining("User not allowed");
     verify(userRepository, never()).getUserByExternalId(CLIENT_ID);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"human@example.com,opaque-subject", ",human@example.com"})
+  void entraIdTokenResolvesEnabledUserFromSupportedClaims(String email, String subject) {
+    var token = entraToken(subject);
+    if (email != null) {
+      token.withClaim("email", email);
+    }
+    when(userRepository.getUserByEmail(USER_EMAIL)).thenReturn(enabledUser(USER_EMAIL));
+
+    assertThat(
+            handler.resolvePrincipalEmail(TokenType.ID_TOKEN, decode(token.sign(Algorithm.none()))))
+        .isEqualTo(USER_EMAIL);
+    verify(userRepository, never()).getUserByExternalId(anyString());
+  }
+
+  @ParameterizedTest
+  @CsvSource({",", "'',human@example.com", "' ',human@example.com", ",''", ",' '"})
+  void entraIdTokenRejectsMissingOrBlankClaims(String email, String subject) {
+    var token = entraToken(subject);
+    if (email != null) {
+      token.withClaim("email", email);
+    }
+
+    assertThatThrownBy(
+            () ->
+                handler.resolvePrincipalEmail(
+                    TokenType.ID_TOKEN, decode(token.sign(Algorithm.none()))))
+        .isInstanceOfSatisfying(
+            OAuthInvalidRequestException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+        .hasMessage("User not allowed");
+    verify(userRepository, never()).getUserByEmail(anyString());
+    verify(userRepository, never()).getUserByExternalId(anyString());
+  }
+
+  @Test
+  void entraIdTokenRejectsDisabledUser() {
+    when(userRepository.getUserByEmail(USER_EMAIL))
+        .thenReturn(new User().email(USER_EMAIL).state(User.StateEnum.DISABLED));
+    DecodedJWT jwt =
+        decode(entraToken("opaque-subject").withClaim("email", USER_EMAIL).sign(Algorithm.none()));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+        .isInstanceOfSatisfying(
+            OAuthInvalidRequestException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+        .hasMessage("User not allowed");
+    verify(userRepository, never()).getUserByExternalId(anyString());
+  }
+
+  private static com.auth0.jwt.JWTCreator.Builder entraToken(String subject) {
+    return JWT.create()
+        .withSubject(subject)
+        .withIssuer("https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/v2.0")
+        .withAudience(CLIENT_ID)
+        .withClaim("azp", CLIENT_ID)
+        .withClaim("client_id", CLIENT_ID);
   }
 
   @Test

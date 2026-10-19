@@ -19,20 +19,25 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
+import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -228,6 +233,82 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
     // The JWT verifier rejects the audience claim → 401 Unauthorized
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
+  @Test
+  public void testDisallowedIssuerIsRejectedBeforeDiscovery() throws Exception {
+    AtomicInteger requests = new AtomicInteger();
+    HttpServer issuer = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+    issuer.createContext(
+        "/",
+        exchange -> {
+          requests.incrementAndGet();
+          exchange.sendResponseHeaders(500, -1);
+          exchange.close();
+        });
+    issuer.start();
+    try {
+      String token =
+          createIdentityToken(
+              ENABLED_USER_EMAIL,
+              "http://localhost:" + issuer.getAddress().getPort(),
+              TEST_AUDIENCE,
+              testIssuerAlgorithm,
+              testIssuerKeyId);
+      AggregatedHttpResponse response = exchangeToken(token);
+      assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("error_code").asText())
+          .isEqualTo("UNAUTHENTICATED");
+      assertThat(response.contentUtf8()).contains("Invalid issuer");
+      assertThat(requests.get()).isZero();
+    } finally {
+      issuer.stop(0);
+    }
+  }
+
+  @Test
+  public void testMissingAudienceAndInvalidSignaturesAreRejected() throws Exception {
+    var foreignKey = KeyPairGenerator.getInstance("RSA").generateKeyPair();
+    Algorithm foreignSigning =
+        Algorithm.RSA512(
+            (RSAPublicKey) foreignKey.getPublic(), (RSAPrivateKey) foreignKey.getPrivate());
+    for (String token :
+        List.of(
+            createIdentityToken(
+                ENABLED_USER_EMAIL, testIssuer, null, testIssuerAlgorithm, testIssuerKeyId),
+            createIdentityToken(
+                ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, foreignSigning, testIssuerKeyId),
+            JWT.create()
+                .withSubject(ENABLED_USER_EMAIL)
+                .withIssuer(testIssuer)
+                .withAudience(TEST_AUDIENCE)
+                .withKeyId(testIssuerKeyId)
+                .withExpiresAt(new Date(0))
+                .sign(testIssuerAlgorithm))) {
+      AggregatedHttpResponse response = exchangeToken(token);
+      assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+      JsonNode error = MAPPER.readTree(response.contentUtf8());
+      assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+      assertThat(error.has("access_token")).isFalse();
+    }
+  }
+
+  @Test
+  public void testMalformedTokenDoesNotExposePayload() throws Exception {
+    String payload = "private-payload-must-not-be-returned";
+    String token =
+        "e30."
+            + Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8))
+            + ".signature";
+
+    AggregatedHttpResponse response = exchangeToken(token);
+    assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    JsonNode error = MAPPER.readTree(response.contentUtf8());
+    assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+    assertThat(error.get("message").asText()).isEqualTo("Invalid token");
+    assertThat(response.contentUtf8()).doesNotContain(payload, token);
   }
 
   @Test
