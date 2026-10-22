@@ -14,3 +14,6 @@ etc/conf/key_id.txt
 etc/conf/certs.json
 etc/conf/token.txt
 etc/conf/server.properties.local
+# Runtime database and table files must never be copied into the image.
+etc/db/*
+etc/data/**

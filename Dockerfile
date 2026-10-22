@@ -33,6 +33,9 @@ FROM alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e
 ARG JAVA_HOME="/usr/lib/jvm/default-jvm"
 ARG USER="unitycatalog"
 ARG HOME
+# Match the owner of the shared host directory so local clients and the server can both write.
+ARG UC_HOST_UID=1000
+ARG UC_HOST_GID=1000
 
 # Copy Java from base
 COPY --from=base $JAVA_HOME $JAVA_HOME
@@ -54,10 +57,10 @@ COPY --from=base --parents \
 # Create a service user with read and execute permissions and write permissions of the ./etc directory
 RUN <<EOF
 apk add --no-cache bash
-addgroup -S $USER
-adduser -S -G $USER $USER
+addgroup -S -g $UC_HOST_GID $USER
+adduser -S -u $UC_HOST_UID -G $USER $USER
 chmod -R 550 $HOME
-mkdir -p $HOME/etc/
+mkdir -p $HOME/etc/db $HOME/etc/data
 chmod -R 770 $HOME/etc/
 chown -R $USER:$USER $HOME
 EOF

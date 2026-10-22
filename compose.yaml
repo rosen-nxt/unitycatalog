@@ -6,18 +6,30 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UC_HOST_UID: ${UC_HOST_UID:-1000}
+        UC_HOST_GID: ${UC_HOST_GID:-1000}
     image: unitycatalog:local
     # These dotted variable names override server.properties. Keep local identity
     # configuration outside both Git and the image.
     env_file:
       - path: ./etc/conf/server.properties.local
         required: false
+    environment:
+      # Absolute file URLs returned by UC must also resolve on the host and in client containers.
+      storage-root.tables: file:${UC_SHARED_DATA_DIR:?Set UC_SHARED_DATA_DIR to an absolute host path}/tables
+      storage-root.models: file:${UC_SHARED_DATA_DIR}/models
     ports:
       - "8080:8080"
     volumes:
       - type: volume
-        source: unitycatalog_data
-        target: /home/unitycatalog/etc/data
+        source: unitycatalog_state
+        target: /home/unitycatalog/etc
+      - type: bind
+        source: ${UC_SHARED_DATA_DIR}
+        target: ${UC_SHARED_DATA_DIR}
+        bind:
+          create_host_path: false
   ui:
     build:
       context: ui/
@@ -33,5 +45,5 @@ services:
       - server
 
 volumes:
-  # Persist docker volume across container restarts
-  unitycatalog_data:
+  # Persists the H2 DB (etc/db) and signing material (etc/conf) across container replacements.
+  unitycatalog_state:

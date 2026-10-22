@@ -41,21 +41,47 @@ server-package:
 server-start run_dir=".":
     cd "{{ run_dir }}" && "{{ justfile_directory() }}/bin/start-uc-server"
 
+# Start Compose with a shared absolute data path and the host user's UID/GID.
+[private]
+compose-up service="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export UC_SHARED_DATA_DIR="${UC_SHARED_DATA_DIR:-{{ justfile_directory() }}/.compose/data}"
+    case "$UC_SHARED_DATA_DIR" in
+      /*) ;;
+      *) echo 'UC_SHARED_DATA_DIR must be an absolute path' >&2; exit 1 ;;
+    esac
+    export UC_HOST_UID="$(id -u)" UC_HOST_GID="$(id -g)"
+    if [ "$UC_HOST_UID" -eq 0 ] || [ "$UC_HOST_GID" -eq 0 ]; then
+      echo 'Run Compose as a non-root user with a non-root primary group' >&2
+      exit 1
+    fi
+    mkdir -p "$UC_SHARED_DATA_DIR"
+    docker compose up --build --detach {{ service }}
+
 # Build the server image from this checkout and start its Compose service.
 start-server:
-    docker compose up --build --detach server
+    just compose-up server
 
-# Stop the Compose server service while preserving its data volume.
+# Stop the Compose server service while preserving its state and shared data.
 stop-server:
-    docker compose stop server
+    UC_SHARED_DATA_DIR="${UC_SHARED_DATA_DIR:-{{ justfile_directory() }}/.compose/data}" docker compose stop server
 
 # Build the local server image and start the server and UI Compose services.
 up:
-    docker compose up --build --detach
+    just compose-up
 
-# Stop and remove the server and UI containers while preserving catalog data.
+# Stop and remove the containers without deleting the database, keys or shared data.
 down:
-    docker compose down --remove-orphans
+    UC_SHARED_DATA_DIR="${UC_SHARED_DATA_DIR:-{{ justfile_directory() }}/.compose/data}" docker compose down --remove-orphans
+
+# Print the running Compose server's bootstrap admin token. Treat its output as a secret.
+admin-token:
+    @UC_SHARED_DATA_DIR="${UC_SHARED_DATA_DIR:-{{ justfile_directory() }}/.compose/data}" docker compose exec -T server cat /home/unitycatalog/etc/conf/token.txt
+
+# Check Compose's shared file-URL and persistence mounts without starting Docker.
+compose-test:
+    python3 dev/test-compose-config.py
 
 server-test:
     build/sbt "server/test"

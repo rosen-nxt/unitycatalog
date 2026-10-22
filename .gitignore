@@ -1,5 +1,6 @@
 etc/db/h2db.mv.db
 etc/db/h2db.trace.db
+.compose/
 mlflow.db
 target/
 
