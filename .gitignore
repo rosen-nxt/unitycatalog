@@ -40,6 +40,7 @@ mlruns/
 mlartifacts/
 
 # Local server / demo artifacts
+.compose/
 **/derby.log
 **/metastore_db/
 
