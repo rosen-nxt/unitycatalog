@@ -4,14 +4,18 @@ import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.Context;
 import com.azure.identity.ClientSecretCredentialBuilder;
+import com.azure.identity.WorkloadIdentityCredentialBuilder;
 import com.azure.storage.file.datalake.DataLakeServiceAsyncClient;
 import com.azure.storage.file.datalake.DataLakeServiceClientBuilder;
 import com.azure.storage.file.datalake.implementation.util.DataLakeSasImplUtil;
 import com.azure.storage.file.datalake.models.UserDelegationKey;
 import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
 import com.azure.storage.file.datalake.sas.PathSasPermission;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.Set;
 
 public interface AzureCredentialGenerator {
@@ -40,12 +44,34 @@ public interface AzureCredentialGenerator {
     private final TokenCredential tokenCredential;
 
     public DatalakeCredentialGenerator(ADLSStorageConfig config) {
-      this.tokenCredential =
-          new ClientSecretCredentialBuilder()
-              .tenantId(config.getTenantId())
-              .clientId(config.getClientId())
-              .clientSecret(config.getClientSecret())
-              .build();
+      this(config, System.getenv());
+    }
+
+    DatalakeCredentialGenerator(ADLSStorageConfig config, Map<String, String> environment) {
+      if (config.getAuthMode() == ADLSStorageConfig.AuthMode.WORKLOAD_IDENTITY) {
+        config.validate();
+        for (String key :
+            Set.of("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE")) {
+          if (environment.get(key) == null || environment.get(key).isBlank()) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                "Azure workload identity requires injected " + key + ".");
+          }
+        }
+        this.tokenCredential =
+            new WorkloadIdentityCredentialBuilder()
+                .tenantId(environment.get("AZURE_TENANT_ID"))
+                .clientId(environment.get("AZURE_CLIENT_ID"))
+                .tokenFilePath(environment.get("AZURE_FEDERATED_TOKEN_FILE"))
+                .build();
+      } else {
+        this.tokenCredential =
+            new ClientSecretCredentialBuilder()
+                .tenantId(config.getTenantId())
+                .clientId(config.getClientId())
+                .clientSecret(config.getClientSecret())
+                .build();
+      }
     }
 
     @Override

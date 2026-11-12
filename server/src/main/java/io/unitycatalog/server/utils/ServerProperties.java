@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.IntPredicate;
 import lombok.Getter;
 import org.slf4j.Logger;
@@ -479,32 +480,52 @@ public class ServerProperties {
 
   public Map<String, ADLSStorageConfig> getAdlsConfigurations() {
     Map<String, ADLSStorageConfig> adlsConfigMap = new HashMap<>();
-
-    int i = 0;
-    while (true) {
+    Set<String> keys = new HashSet<>(properties.stringPropertyNames());
+    keys.addAll(System.getProperties().stringPropertyNames());
+    keys.addAll(System.getenv().keySet());
+    Set<Integer> indices = new TreeSet<>();
+    for (String key : keys) {
+      if (key.matches(
+          "adls\\.(storageAccountName|authMode|tenantId|clientId|clientSecret|testMode|credentialGenerator)\\.[0-9]+")) {
+        try {
+          indices.add(Integer.parseInt(key.substring(key.lastIndexOf('.') + 1)));
+        } catch (NumberFormatException e) {
+          throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid ADLS configuration index.");
+        }
+      }
+    }
+    int expectedIndex = 0;
+    for (int i : indices) {
+      if (i != expectedIndex++) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "ADLS configuration indices must be contiguous from zero.");
+      }
       String storageAccountName = getProperty("adls.storageAccountName." + i);
       String tenantId = getProperty("adls.tenantId." + i);
       String clientId = getProperty("adls.clientId." + i);
       String clientSecret = getProperty("adls.clientSecret." + i);
       String testMode = getProperty("adls.testMode." + i);
       String credentialGenerator = getProperty("adls.credentialGenerator." + i);
-      if (storageAccountName == null
-          || tenantId == null
-          || clientId == null
-          || clientSecret == null) {
-        break;
+      if (testMode != null
+          && !testMode.equalsIgnoreCase("true")
+          && !testMode.equalsIgnoreCase("false")) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid ADLS testMode.");
       }
-      adlsConfigMap.put(
-          storageAccountName,
+      ADLSStorageConfig config =
           ADLSStorageConfig.builder()
+              .authMode(ADLSStorageConfig.AuthMode.fromConfig(getProperty("adls.authMode." + i)))
               .storageAccountName(storageAccountName)
               .tenantId(tenantId)
               .clientId(clientId)
               .clientSecret(clientSecret)
               .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
               .credentialGenerator(credentialGenerator)
-              .build());
-      i++;
+              .build();
+      config.validate();
+      if (adlsConfigMap.putIfAbsent(storageAccountName, config) != null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "Duplicate ADLS storage account configuration.");
+      }
     }
 
     return adlsConfigMap;
