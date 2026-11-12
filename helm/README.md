@@ -75,6 +75,22 @@ Docker, and `docs/server/oidc-auth.md` for local setup.
 Pin paired server/UI images and chart source to the reviewed fork commit before release;
 the inherited chart `main` image defaults are not immutable release pins.
 
+### Azure ADLS workload identity
+
+Set each permitted account's `storage.credentials.adls[].authMode` to
+`workload-identity`; omit `credentialsSecretName` and client credential fields.
+Configure the intended service account's `azure.workload.identity/client-id`
+annotation and `server.deployment.extraPodLabels.azure.workload.identity/use: "true"`.
+The Azure webhook must inject tenant/client/token-file environment into the server
+container. Missing identity fails vending without an ambient credential fallback.
+An unconfigured account is always denied. Omitted authMode retains legacy
+client-secret references, so mixed lists remain supported.
+
+See `docs/server/azure.md` for complete values, federation, RBAC/ACL, token lifecycle,
+network prerequisites and paired immutable server/chart migration and rollback.
+Do not enable these values on an older client-secret-only release or alter the
+current production release in place.
+
 ## Values
 
 <table>
@@ -1168,14 +1184,20 @@ not set
 Example:
 ```yaml
 adls:
-- storageAccountName: my-storage-account
+- storageAccountName: mystorageaccount
   credentialsSecretName: my-storage-secret
+- storageAccountName: permittedworkloadaccount
+  authMode: workload-identity
 ```
 
-Credential secret must contain the following keys:
+Omitted authMode defaults to client-secret. Its credential secret must contain:
 - `tenantId`: Azure tenant ID
 - `clientId`: Azure client ID
 - `clientSecret`: Azure client secret
+Workload-identity mode uses the pod's injected Azure identity and cannot set
+credentialsSecretName or client credential fields. Configure federation,
+serviceAccount.annotations and server.deployment.extraPodLabels as described
+in docs/server/azure.md. Each account must be explicitly permitted here.
 </td>
 		</tr>
 		<tr>

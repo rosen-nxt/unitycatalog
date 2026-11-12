@@ -34,14 +34,20 @@ storage:
     # Example:
     # ```yaml
     # adls:
-    # - storageAccountName: my-storage-account
+    # - storageAccountName: mystorageaccount
     #   credentialsSecretName: my-storage-secret
+    # - storageAccountName: permittedworkloadaccount
+    #   authMode: workload-identity
     # ```
     #
-    # Credential secret must contain the following keys:
+    # Omitted authMode defaults to client-secret. Its credential secret must contain:
     # - `tenantId`: Azure tenant ID
     # - `clientId`: Azure client ID
     # - `clientSecret`: Azure client secret
+    # Workload-identity mode uses the pod's injected Azure identity and cannot set
+    # credentialsSecretName or client credential fields. Configure federation,
+    # serviceAccount.annotations and server.deployment.extraPodLabels as described
+    # in docs/server/azure.md. Each account must be explicitly permitted here.
     #
     adls:
 
