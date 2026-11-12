@@ -138,15 +138,19 @@ class AzureWorkloadIdentityTest {
   void failedIdentityExchangeOrDelegationRequestDoesNotFallback() {
     DataLakeServiceAsyncClient client = mock(DataLakeServiceAsyncClient.class);
     when(client.getUserDelegationKey(any(), any()))
-        .thenReturn(Mono.error(new IllegalStateException("exchange denied")));
+        .thenReturn(Mono.error(new IllegalStateException("sensitive-value")));
     try (var workload = workloadBuilder(mock(WorkloadIdentityCredential.class));
         var legacy = mockConstruction(ClientSecretCredentialBuilder.class);
         var services = serviceBuilder(client)) {
       var generator = new DatalakeCredentialGenerator(workloadConfig(), environment);
       assertThatThrownBy(
               () -> generator.generate(context("workload", "table", CredentialContext.READ_ONLY)))
-          .isInstanceOf(CompletionException.class)
-          .hasCauseInstanceOf(IllegalStateException.class);
+          .isInstanceOf(BaseException.class)
+          .hasMessage("Azure workload identity could not obtain a user-delegation key.")
+          .hasMessageNotContaining("sensitive-value")
+          .hasCauseInstanceOf(CompletionException.class)
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.FAILED_PRECONDITION);
       assertThat(workload.constructed()).hasSize(1);
       assertThat(legacy.constructed()).isEmpty();
     }
@@ -196,6 +200,24 @@ class AzureWorkloadIdentityTest {
           .extracting(e -> ((BaseException) e).getErrorCode())
           .isEqualTo(ErrorCode.FAILED_PRECONDITION);
       assertThat(generators.constructed()).isEmpty();
+      for (String host :
+          java.util.List.of(
+              "workload.attacker.example",
+              "workload.dfs.core.windows.net.attacker.example",
+              "workload.blob.core.windows.net",
+              "workload")) {
+        var forged =
+            CredentialContext.create(
+                NormalizedURL.from("abfss://container@" + host + "/table"),
+                CredentialContext.READ_ONLY,
+                Optional.empty());
+        assertThatThrownBy(() -> vendor.vendAzureCredential(forged))
+            .isInstanceOf(BaseException.class)
+            .hasMessageContaining("configured public Azure DFS endpoint")
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+        assertThat(generators.constructed()).isEmpty();
+      }
       assertThat(
               vendor
                   .vendAzureCredential(context("workload", "table", CredentialContext.READ_ONLY))

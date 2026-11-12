@@ -17,6 +17,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 
 public interface AzureCredentialGenerator {
   AzureCredential generate(CredentialContext ctx);
@@ -42,13 +43,15 @@ public interface AzureCredentialGenerator {
 
   class DatalakeCredentialGenerator implements AzureCredentialGenerator {
     private final TokenCredential tokenCredential;
+    private final ADLSStorageConfig.AuthMode authMode;
 
     public DatalakeCredentialGenerator(ADLSStorageConfig config) {
       this(config, System.getenv());
     }
 
     DatalakeCredentialGenerator(ADLSStorageConfig config, Map<String, String> environment) {
-      if (config.getAuthMode() == ADLSStorageConfig.AuthMode.WORKLOAD_IDENTITY) {
+      this.authMode = config.getAuthMode();
+      if (authMode == ADLSStorageConfig.AuthMode.WORKLOAD_IDENTITY) {
         config.validate();
         for (String key :
             Set.of("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE")) {
@@ -89,7 +92,18 @@ public interface AzureCredentialGenerator {
       // TODO: possibly make this configurable - defaulted to 1 hour right now
       OffsetDateTime start = OffsetDateTime.now();
       OffsetDateTime expiry = start.plusHours(1);
-      UserDelegationKey key = serviceClient.getUserDelegationKey(start, expiry).toFuture().join();
+      UserDelegationKey key;
+      try {
+        key = serviceClient.getUserDelegationKey(start, expiry).toFuture().join();
+      } catch (CompletionException e) {
+        if (authMode == ADLSStorageConfig.AuthMode.WORKLOAD_IDENTITY) {
+          throw new BaseException(
+              ErrorCode.FAILED_PRECONDITION,
+              "Azure workload identity could not obtain a user-delegation key.",
+              e);
+        }
+        throw e;
+      }
 
       PathSasPermission perms = resolvePrivileges(ctx.getPrivileges());
       DataLakeServiceSasSignatureValues sasSignatureValues =

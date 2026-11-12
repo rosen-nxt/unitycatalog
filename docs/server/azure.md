@@ -26,9 +26,18 @@ client-secret fallback. The **server container** must receive nonblank
 `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_FEDERATED_TOKEN_FILE`. Missing
 injection rejects vending with `FAILED_PRECONDITION`. An unreadable/invalid
 projected token, federation mismatch, failed Entra exchange or denied delegation
-request also fails vending; none selects another credential type. All opted-in
+request also fails vending; none selects another credential type. Delegation
+failures return a sanitized `FAILED_PRECONDITION` message, not the SDK response
+body. All opted-in
 accounts use the same pod identity. Do not set `tenantId`, `clientId`,
 `clientSecret`, enabled `testMode` or `credentialGenerator` on those entries.
+
+Workload-identity locations must use the configured account's exact public Azure
+DFS host, `<account>.dfs.core.windows.net`. Lookalike prefixes/suffixes, arbitrary
+hosts and alternate endpoints are denied before constructing a credential client,
+so a storage-scope bearer token is not sent to an untrusted host. Sovereign-cloud
+and custom endpoint workload identity support require a separate reviewed change;
+legacy client-secret endpoint behavior is unchanged.
 
 For a legacy account, retain its indexed `storageAccountName`, `tenantId`,
 `clientId` and `clientSecret` settings, optionally adding `authMode=client-secret`.
@@ -36,6 +45,10 @@ Supply actual secrets through the approved secret store, never Git, task notes
 or command output. Complete legacy test/custom-generator configurations remain
 supported. Remove incomplete demonstration entries instead of relying on the old
 parser's silent truncation behavior.
+
+Account configuration is captured when the server's vendor is constructed;
+restart/roll the server through the approved process after changing modes or
+account entries. This is separate from normal projected-token rotation.
 
 ## Kubernetes and Helm
 
