@@ -1,4 +1,12 @@
 {{- define "unitycatalog.server.configTemplate" -}}
+{{- $accounts := dict -}}
+{{- range $config := .Values.storage.credentials.adls -}}
+{{- $_ := include "unitycatalog.adls.authMode" $config -}}
+{{- if hasKey $accounts $config.storageAccountName -}}
+{{- fail "Duplicate ADLS storage account configuration" -}}
+{{- end -}}
+{{- $_ := set $accounts $config.storageAccountName true -}}
+{{- end -}}
 
 {{- if .Values.server.config.override -}}
 {{ .Values.server.config.override }}
@@ -29,9 +37,13 @@ s3.secretKey.{{ $index }}=${S3_SECRET_KEY_{{ $index }}}
 
 {{- range $index, $config := .Values.storage.credentials.adls }}
 adls.storageAccountName.{{ $index }}={{ $config.storageAccountName }}
+{{- if eq (include "unitycatalog.adls.authMode" $config) "workload-identity" }}
+adls.authMode.{{ $index }}=workload-identity
+{{- else }}
 adls.tenantId.{{ $index }}=${ADLS_TENANT_ID_{{ $index }}}
 adls.clientId.{{ $index }}=${ADLS_CLIENT_ID_{{ $index }}}
 adls.clientSecret.{{ $index }}=${ADLS_CLIENT_SECRET_{{ $index }}}
+{{- end }}
 {{- end }}
 
 {{- range $index, $config := .Values.storage.credentials.gcs }}

@@ -234,10 +234,11 @@ placeholder tracked configuration. Image publication is a separate release task.
   `{liveness,readiness,startup}Probe` objects. Defaults are TCP checks; HTTP probe
   routing/ports and production operating settings belong to deployment.
 - Browser Entra authentication does not establish Azure storage identity. The
-  release ADLS credential vendor uses configured tenant/client/client-secret
-  credentials to obtain a user-delegation SAS and supports downscoping to one
-  location. It does not use `DefaultAzureCredential`/workload identity for this
-  credential-vending path. A pod annotation alone does not add that capability.
+  ADLS credential vendor requires configured accounts and defaults to client-secret
+  credentials. New compatible server/chart releases can explicitly opt each
+  account into workload identity; older releases cannot. Neither permits a
+  `DefaultAzureCredential` fallback for unconfigured accounts. A pod annotation
+  alone does not enable vending; see [Azure ADLS configuration](azure.md).
 
 ## Cleanup
 

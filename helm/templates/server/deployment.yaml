@@ -129,6 +129,7 @@ spec:
                   key: secretKey
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
+          {{- if eq (include "unitycatalog.adls.authMode" $config) "client-secret" }}
             - name: ADLS_TENANT_ID_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -144,6 +145,7 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientSecret
+          {{- end }}
           {{- end }}
           {{- if .Values.auth.enabled }}
             - name: OAUTH_CLIENT_ID
@@ -167,6 +169,9 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- with .Values.server.deployment.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}

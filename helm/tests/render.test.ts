@@ -113,3 +113,184 @@ test("disabled API proxy renders a valid package configuration", () => {
   const container = ui(render({ ui: { proxyApiRequests: false } }));
   expect(container.command.join("\n")).toContain("del(.proxy)");
 });
+
+function server(documents: any[]) {
+  return documents.find(
+    (doc) =>
+      doc.kind === "Deployment" &&
+      doc.spec.template.spec.containers[0].name === "server",
+  );
+}
+
+test("server resources render independently of UI resources", () => {
+  const uiResources = {
+    requests: { cpu: "250m", memory: "1500Mi" },
+    limits: { cpu: "1", memory: "3000Mi" },
+  };
+  for (const resources of [
+    {
+      requests: { cpu: "100m", memory: "256Mi" },
+      limits: { cpu: "1", memory: "1024Mi" },
+    },
+    { requests: { cpu: "200m", memory: "512Mi" } },
+    { limits: { cpu: "2", memory: "2Gi" } },
+  ]) {
+    const documents = render({
+      server: { deployment: { resources } },
+      ui: { deployment: { resources: uiResources } },
+    });
+    const podSpec = server(documents).spec.template.spec;
+    expect(podSpec.containers[0].resources).toEqual(resources);
+    expect(ui(documents).resources).toEqual(uiResources);
+    expect(podSpec.initContainers[0]).not.toHaveProperty("resources");
+  }
+});
+
+test("server resources remain omitted when unset or empty", () => {
+  for (const values of [{}, { server: { deployment: { resources: {} } } }]) {
+    const podSpec = server(render(values)).spec.template.spec;
+    expect(podSpec.containers[0]).not.toHaveProperty("resources");
+  }
+});
+
+test("workload identity permits explicit accounts without secret substitution", () => {
+  const documents = render({
+    storage: {
+      credentials: {
+        adls: [
+          { storageAccountName: "workload", authMode: "workload-identity" },
+          {
+            storageAccountName: "secondaccount",
+            authMode: "workload-identity",
+          },
+        ],
+      },
+    },
+    serviceAccount: {
+      create: true,
+      annotations: {
+        "azure.workload.identity/client-id": "identity-client-id",
+      },
+    },
+    server: {
+      deployment: { extraPodLabels: { "azure.workload.identity/use": "true" } },
+    },
+  });
+  const config = documents.find((doc) => doc.kind === "ConfigMap").data[
+    "server.properties.template"
+  ];
+  expect(config).toContain("adls.storageAccountName.0=workload");
+  expect(config).toContain("adls.storageAccountName.1=secondaccount");
+  expect(config).toContain("adls.authMode.0=workload-identity");
+  expect(config).toContain("adls.authMode.1=workload-identity");
+  for (const field of ["tenantId", "clientId", "clientSecret"]) {
+    expect(config).not.toContain(`adls.${field}`);
+  }
+  expect(config).not.toContain("${ADLS_");
+  expect(JSON.stringify(server(documents))).not.toContain("ADLS_");
+  expect(
+    server(documents).spec.template.metadata.labels[
+      "azure.workload.identity/use"
+    ],
+  ).toBe("true");
+  const account = documents.find((doc) => doc.kind === "ServiceAccount");
+  expect(
+    account.metadata.annotations["azure.workload.identity/client-id"],
+  ).toBe("identity-client-id");
+});
+
+test.each([undefined, "client-secret"])(
+  "legacy mode %s and mixed accounts retain secret references",
+  (authMode) => {
+    const legacy: Record<string, string> = {
+      storageAccountName: "legacy",
+      credentialsSecretName: "legacy-secret",
+    };
+    if (authMode !== undefined) legacy.authMode = authMode;
+    const documents = render({
+      storage: {
+        credentials: {
+          adls: [
+            { storageAccountName: "workload", authMode: "workload-identity" },
+            legacy,
+          ],
+        },
+      },
+    });
+    const config = documents.find((doc) => doc.kind === "ConfigMap").data[
+      "server.properties.template"
+    ];
+    expect(config).toContain("adls.authMode.0=workload-identity");
+    expect(config).not.toContain("adls.clientSecret.0");
+    expect(config).toContain("adls.clientSecret.1=${ADLS_CLIENT_SECRET_1}");
+    const env = server(documents).spec.template.spec.initContainers[0].env;
+    const adlsEnv = env.filter((entry: any) => entry.name.startsWith("ADLS_"));
+    expect(adlsEnv).toHaveLength(3);
+    for (const [name, key] of [
+      ["TENANT_ID", "tenantId"],
+      ["CLIENT_ID", "clientId"],
+      ["CLIENT_SECRET", "clientSecret"],
+    ]) {
+      expect(
+        adlsEnv.find((entry: any) => entry.name === `ADLS_${name}_1`).valueFrom
+          .secretKeyRef,
+      ).toEqual({ name: "legacy-secret", key });
+    }
+  },
+);
+
+test("invalid and ambiguous ADLS values fail chart rendering safely", () => {
+  const workload = {
+    storageAccountName: "workload",
+    authMode: "workload-identity",
+  };
+  const cases: [Record<string, unknown>[], string][] = [
+    [[{ authMode: "workload-identity" }], "storageAccountName is required"],
+    [
+      [{ ...workload, storageAccountName: " " }],
+      "Invalid ADLS storageAccountName",
+    ],
+    [
+      [{ ...workload, authMode: "default" }],
+      "Invalid ADLS authentication mode",
+    ],
+    [[{ ...workload, authMode: "" }], "Invalid ADLS authentication mode"],
+    [[{ storageAccountName: "legacy" }], "requires credentialsSecretName"],
+    [[workload, workload], "Duplicate ADLS"],
+  ];
+  for (const key of [
+    "credentialsSecretName",
+    "tenantId",
+    "clientId",
+    "clientSecret",
+    "credentialGenerator",
+    "testMode",
+  ]) {
+    cases.push([
+      [{ ...workload, [key]: key === "testMode" ? true : "sensitive-value" }],
+      "cannot use",
+    ]);
+  }
+  for (const [adls, message] of cases) {
+    const result = Bun.spawnSync(
+      [
+        "helm",
+        "template",
+        "test",
+        chart,
+        "--set",
+        "server.jwtKeypairSecret.create=false",
+        "-f",
+        "-",
+      ],
+      {
+        stdin: Buffer.from(
+          JSON.stringify({ storage: { credentials: { adls } } }),
+        ),
+      },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain(message);
+    expect(result.stderr.toString()).not.toContain("sensitive-value");
+  }
+});

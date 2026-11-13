@@ -40,6 +40,14 @@ public class AzureCredentialVendor {
           ErrorCode.FAILED_PRECONDITION, "Azure storage account configuration not found.");
     }
 
+    // Do not send the pod's storage-scope bearer token to a lookalike account hostname.
+    if (config.getAuthMode() == ADLSStorageConfig.AuthMode.WORKLOAD_IDENTITY
+        && !locParts.account().equals(config.getStorageAccountName() + ".dfs.core.windows.net")) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "Azure workload identity requires the configured public Azure DFS endpoint.");
+    }
+
     if (config.getCredentialGenerator() != null) {
       try {
         return (AzureCredentialGenerator)

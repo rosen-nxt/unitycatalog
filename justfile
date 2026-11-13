@@ -8,6 +8,9 @@ server-auth-test:
 server-build:
     build/sbt server/compile
 
+server-adls-test:
+    build/sbt "server/testOnly io.unitycatalog.server.utils.ServerPropertiesTest io.unitycatalog.server.service.credential.azure.* io.unitycatalog.server.service.credential.CloudCredentialVendorTest"
+
 format-java:
     build/sbt javafmtAll
 
